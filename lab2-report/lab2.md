@@ -32,11 +32,62 @@
 
 
 ### 练习2：实现 Best-Fit 连续物理内存分配算法（需要编程）
-在完成练习一后，参考kern/mm/default_pmm.c对First Fit算法的实现，编程实现Best Fit页面分配算法，算法的时空复杂度不做要求，能通过测试即可。
-请在实验报告中简要说明你的设计实现过程，阐述代码是如何对物理内存进行分配和释放，并回答如下问题：
-- 你的 Best-Fit 算法是否有进一步的改进空间？
+
+**在完成练习一后，参考kern/mm/default_pmm.c对First Fit算法的实现，编程实现Best Fit页面分配算法，算法的时空复杂度不做要求，能通过测试即可。**
+**请在实验报告中简要说明你的设计实现过程，阐述代码是如何对物理内存进行分配和释放，并回答如下问题：**
+- **你的 Best-Fit 算法是否有进一步的改进空间？**
 
 
+**实现过程：** 与First-Fit不同，Best-Fit的设计思路是找到物理内存中，内存块大小最接近请求快大小的那个空闲块。
+best_fit_init，best_fit_alloc_pages，best_fit_free_pages，函数与First-Fit中函数的算法、作用相同，再次不再重复。
+仅对best_fit_alloc_pages函数中，遍历空闲链表，找到符合要求的空闲块的代码进行简介。
+```cpp{.line-numbers}
+best_fit_alloc_pages(size_t n) {
+    assert(n > 0);
+    if (n > nr_free) {
+        return NULL;
+    }
+    struct Page* page = NULL;
+    list_entry_t* le = &free_list;
+    size_t min_size = (size_t)-1;
+    /*LAB2 EXERCISE 2: 2211489*/
+   // 下面的代码是first-fit的部分代码，请修改下面的代码改为best-fit
+   // 遍历空闲链表，查找满足需求的空闲页框
+   // 如果找到满足需求的页面，记录该页面以及当前找到的最小连续空闲页框数量
+    while ((le = list_next(le)) != &free_list) {
+        struct Page* p = le2page(le, page_link);
+        if (p->property >= n && p->property < min_size)
+        {
+            page = p;
+            min_size = p->property;
+        }
+    }
+
+    if (page != NULL) {
+        list_entry_t* prev = list_prev(&(page->page_link));
+        list_del(&(page->page_link));
+        if (page->property > n) {
+            struct Page* p = page + n;
+            p->property = page->property - n;
+            SetPageProperty(p);
+            list_add(prev, &(p->page_link));
+        }
+        nr_free -= n;
+        ClearPageProperty(page);
+    }
+    return page;
+}
+```
+
+在代码中，设置了一个当前符合要求的最小的空闲块min_size，并将其初始化为一个极大值。在遍历链表时，如果当前访问的块的大小大于请求大小，且小于记录的min_size，则记录当前页面，并更新min_size。这样在循环遍历完整个链表后，可以找到最小的符合要求的页面，避免分配的页面过大，造成过多的内存碎片。
+
+运行结果如下图所示：
+![alt text](result1.png)
+得分如下图所示：
+![alt text](grade.png)
+
+**改进空间：** 可以考虑将链表改为按照块大小排序，在查找时使用二分查找，可以大大提高查找效率。
+此外，还可以在对块进行分配时，检查是否可以合并相邻的空闲块，可以提高利用效率。
 
 ### 扩展练习Challenge：buddy system（伙伴系统）分配算法（需要编程）
 
