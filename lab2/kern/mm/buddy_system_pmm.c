@@ -50,10 +50,10 @@ buddy_system_init_memmap(struct Page* base, size_t n) {
     nr_free += n;
     buddy_base = base;
 
-    size = fixsize(n);
+    //size = fixsize(n);
+    size = 256;
     //初始化二叉树
-    //unsigned node_size = 2 * size;
-    unsigned node_size = size;
+    unsigned node_size = 2 * size;
     root = (unsigned*)(base + size);
     for (int i = 0; i < 2 * size - 1; ++i)
     {
@@ -158,45 +158,52 @@ buddy_system_nr_free_pages(void) {
     return nr_free;
 }
 
+void print_node(int index)
+{
+    cprintf("node%d: %d\n", index, root[index]);
+}
+
+void print_from_to(int start, int end)
+{
+    for (int i = start; i <= end; i++)
+        print_node(i);
+    cprintf("\n");
+}
+
+
+
 
 static void
 buddy_system_check(void) {
-    struct Page* p0, * A, * B, * C, * D;
-    p0 = A = B = C = D = NULL;
-    A = alloc_pages(70);
-    B = alloc_pages(35);
-    C = alloc_pages(257);
-    D = alloc_pages(63);
-    cprintf("A分配70，B分配35，C分配257，D分配63\n");
-    cprintf("此时A %p\n", A);
-    cprintf("此时B %p\n", B);
-    cprintf("此时C %p\n", C);
-    cprintf("此时D %p\n", D);
+    cprintf("Starting buddy system memory checks...\n");
 
-    free_pages(B, 35);
-    cprintf("B释放35\n");
-    free_pages(D, 63);
-    cprintf("D释放63\n");
-    cprintf("此时BD应该合并\n");
-    free_pages(A, 70);
-    cprintf("A释放70\n");
-    cprintf("此时前512个已空，我们再分配511个的A来测试\n");
-    A = alloc_pages(511);
-    cprintf("A分配511\n");
-    cprintf("此时A %p\n", A);
-    free_pages(A, 512);
-    cprintf("A释放512\n");
+    // 进行内存分配测试
+    struct Page* p1 = buddy_system_alloc_pages(3); // 分配3页
+    struct Page* p2 = buddy_system_alloc_pages(8); // 分配8页
+    struct Page* p3 = buddy_system_alloc_pages(9); // 分配9页
 
-    A = alloc_pages(255);
-    B = alloc_pages(255);
-    cprintf("A分配255，B分配255\n");
-    cprintf("此时A %p\n", A);
-    cprintf("此时B %p\n", B);
-    free_pages(C, 257);
-    free_pages(A, 255);
-    free_pages(A, 255);
-    cprintf("全部释放\n");
-    cprintf("检查完成，没有错误\n");
+    cprintf("Allocated pages: p1 = %p, p2 = %p, p3 = %p\n", p1, p2, p3);
+    
+    // 打印当前Buddy树
+    cprintf("Current Buddy Tree:\n");
+    print_from_to(0, 80); // 从根节点开始打印树
+
+    // 释放之前分配的页面
+    if (p1) buddy_system_free_pages(p1, 3);
+    if (p2) buddy_system_free_pages(p2, 8);
+    if (p3) buddy_system_free_pages(p3, 9);
+
+    // 打印当前Buddy树
+    cprintf("Buddy Tree after deallocation:\n");
+    print_from_to(0, 80); // 从根节点开始打印树
+
+    // 再次分配页以验证内存状态
+    struct Page* p4 = buddy_system_alloc_pages(127); // 分配127页
+    cprintf("Allocated pages after deallocation: p4 = %p\n", p4);
+
+    // 打印当前Buddy树
+    cprintf("Buddy Tree after deallocation:\n");
+    print_from_to(0, 80); // 从根节点开始打印树
 }
 
 
