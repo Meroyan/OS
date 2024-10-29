@@ -61,10 +61,10 @@ static void check_pgfault(void);
 // mm_create -  alloc a mm_struct & initialize it.
 struct mm_struct *
 mm_create(void) {
-    struct mm_struct *mm = kmalloc(sizeof(struct mm_struct));
+    struct mm_struct *mm = kmalloc(sizeof(struct mm_struct));//分配内存
 
-    if (mm != NULL) {
-        list_init(&(mm->mmap_list));
+    if (mm != NULL) {   //检查分配是否成功
+        list_init(&(mm->mmap_list));    //初始化链表
         mm->mmap_cache = NULL;
         mm->pgdir = NULL;
         mm->map_count = 0;
@@ -87,7 +87,7 @@ vma_create(uintptr_t vm_start, uintptr_t vm_end, uint_t vm_flags) {
     }
     return vma;
 }
-
+ 
 
 // find_vma - find a vma  (vma->vm_start <= addr <= vma_vm_end)
 struct vma_struct *
@@ -118,6 +118,7 @@ find_vma(struct mm_struct *mm, uintptr_t addr) {
 
 
 // check_vma_overlap - check if vma1 overlaps vma2 ?
+//检查VMA重叠
 static inline void
 check_vma_overlap(struct vma_struct *prev, struct vma_struct *next) {
     assert(prev->vm_start < prev->vm_end);
@@ -129,7 +130,7 @@ check_vma_overlap(struct vma_struct *prev, struct vma_struct *next) {
 // insert_vma_struct -insert vma in mm's list link
 void
 insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
-    assert(vma->vm_start < vma->vm_end);
+    assert(vma->vm_start < vma->vm_end);    //确保start < end
     list_entry_t *list = &(mm->mmap_list);
     list_entry_t *le_prev = list, *le_next;
 
@@ -141,7 +142,7 @@ insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
             }
             le_prev = le;
         }
-
+    //遍历链表，按照start有序插入
     le_next = list_next(le_prev);
 
     /* check overlap */
@@ -159,6 +160,7 @@ insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
 }
 
 // mm_destroy - free mm and mm internal fields
+//释放所有vma
 void
 mm_destroy(struct mm_struct *mm) {
 
@@ -329,12 +331,14 @@ volatile unsigned int pgfault_num=0;
  */
 int
 do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
+    //初始化返回值为 -E_INVAL，表示无效的操作或参数。
     int ret = -E_INVAL;
     //try to find a vma which include addr
     struct vma_struct *vma = find_vma(mm, addr);
 
     pgfault_num++;
     //If the addr is in the range of a mm's vma?
+    //未找到vma或vma越界，打印错误信息，goto failed
     if (vma == NULL || vma->vm_start > addr) {
         cprintf("not valid addr %x, and  can not find it in vma\n", addr);
         goto failed;
@@ -346,10 +350,13 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
      * THEN
      *    continue process
      */
+    //设置权限位
     uint32_t perm = PTE_U;
     if (vma->vm_flags & VM_WRITE) {
         perm |= (PTE_R | PTE_W);
     }
+
+    //地址向下对齐
     addr = ROUNDDOWN(addr, PGSIZE);
 
     ret = -E_NO_MEM;
@@ -373,17 +380,18 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
     *
     */
 
-
+    //获取对应页表项
     ptep = get_pte(mm->pgdir, addr, 1);  //(1) try to find a pte, if pte's
                                          //PT(Page Table) isn't existed, then
                                          //create a PT.
     if (*ptep == 0) {
+        //不存在，分配新页表
         if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
             cprintf("pgdir_alloc_page in do_pgfault failed\n");
             goto failed;
         }
     } else {
-        /*LAB3 EXERCISE 3: YOUR CODE
+        /*LAB3 EXERCISE 3: 2211489
         * 请你根据以下信息提示，补充函数
         * 现在我们认为pte是一个交换条目，那我们应该从磁盘加载数据并放到带有phy addr的页面，
         * 并将phy addr与逻辑addr映射，触发交换管理器记录该页面的访问情况
@@ -395,8 +403,10 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
         *    page_insert ： 建立一个Page的phy addr与线性addr la的映射
         *    swap_map_swappable ： 设置页面可交换
         */
+
         if (swap_init_ok) {
             struct Page *page = NULL;
+
             // 你要编写的内容在这里，请基于上文说明以及下文的英文注释完成代码编写
             //(1）According to the mm AND addr, try
             //to load the content of right disk page
@@ -406,6 +416,16 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
             //map of phy addr <--->
             //logical addr
             //(3) make the page swappable.
+            //（1）根据mm和addr，从磁盘加载到内存
+            //（2）根据mm和page，建立映射关系
+            //（3）设置页面可交换
+            
+            swap_in(mm, addr, &page);
+            //page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
+            //page对应物理页面，la是虚拟地址
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
+
             page->pra_vaddr = addr;
         } else {
             cprintf("no swap_init_ok but ptep is %x, failed\n", *ptep);

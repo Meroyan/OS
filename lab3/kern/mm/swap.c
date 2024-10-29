@@ -40,6 +40,7 @@ swap_init(void)
      }
 
      sm = &swap_manager_clock;//use first in first out Page Replacement Algorithm
+     
      int r = sm->init();
      
      if (r == 0)
@@ -88,7 +89,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           //struct Page **ptr_page=NULL;
           struct Page *page;
           // cprintf("i %d, SWAP: call swap_out_victim\n",i);
-          int r = sm->swap_out_victim(mm, &page, in_tick);
+          int r = sm->swap_out_victim(mm, &page, in_tick);//选择被换出的页面
           if (r != 0) {
                     cprintf("i %d, swap_out: call swap_out_victim failed\n",i);
                   break;
@@ -98,9 +99,9 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
           //cprintf("SWAP: choose victim page 0x%08x\n", page);
           
           v=page->pra_vaddr; 
-          pte_t *ptep = get_pte(mm->pgdir, v, 0);
+          pte_t *ptep = get_pte(mm->pgdir, v, 0);//获取对应页表项
           assert((*ptep & PTE_V) != 0);
-
+          //将页面写入磁盘
           if (swapfs_write( (page->pra_vaddr/PGSIZE+1)<<8, page) != 0) {
                     cprintf("SWAP: failed to save\n");
                     sm->map_swappable(mm, v, page, 0);

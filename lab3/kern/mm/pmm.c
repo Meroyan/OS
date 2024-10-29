@@ -13,12 +13,14 @@
 #include <riscv.h>
 
 // virtual address of physical page array
-struct Page *pages;
-// amount of physical memory (in pages)
+struct Page *pages; //  物理页
+// amount of physical memory (in pages) 物理页数量
 size_t npage = 0;
 // The kernel image is mapped at VA=KERNBASE and PA=info.base
+//虚拟页和物理页的偏移量
 uint_t va_pa_offset;
 // memory starts at 0x80000000 in RISC-V
+//内存基地址
 const size_t nbase = DRAM_BASE / PGSIZE;
 
 // virtual address of boot-time page directory
@@ -124,6 +126,7 @@ static void page_init(void) {
     }
 }
 
+//启用分页机制
 static void enable_paging(void) {
     write_csr(satp, (0x8000000000000000) | (boot_cr3 >> RISCV_PGSHIFT));
 }
@@ -137,9 +140,12 @@ static void enable_paging(void) {
  * @param[in]  pa     Physical address of this memory
  * @param[in]  perm   The permission of this memory
  */
+//物理内存映射到虚拟地址空间
 static void boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size,
                              uintptr_t pa, uint32_t perm) {
+    //虚拟la，物理pa
     assert(PGOFF(la) == PGOFF(pa));
+    //需要的页数
     size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;
     la = ROUNDDOWN(la, PGSIZE);
     pa = ROUNDDOWN(pa, PGSIZE);
@@ -244,7 +250,7 @@ pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_U           0x004                   // page table/directory entry
      * flags bit : User can access
      */
-    pde_t *pdep1 = &pgdir[PDX1(la)];
+    pde_t *pdep1 = &pgdir[PDX1(la)]; 
     if (!(*pdep1 & PTE_V)) {
         struct Page *page;
         if (!create || (page = alloc_page()) == NULL) {
@@ -286,6 +292,7 @@ struct Page *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 // page_remove_pte - free an Page sturct which is related linear address la
 //                - and clean(invalidate) pte which is related linear address la
 // note: PT is changed, so the TLB need to be invalidate
+//删除页表项及他的映射
 static inline void page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
     /*
      *
@@ -309,6 +316,7 @@ static inline void page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
      *   PTE_P           0x001                   // page table/directory entry
      * flags bit : Present
      */
+    //如果存在映射
     if (*ptep & PTE_V) {  //(1) check if this page table entry is
         struct Page *page =
             pte2page(*ptep);  //(2) find corresponding page to pte
@@ -325,8 +333,10 @@ static inline void page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
 // page_remove - free an Page which is related linear address la and has an
 // validated pte
 void page_remove(pde_t *pgdir, uintptr_t la) {
+    //找到对应页表项位置
     pte_t *ptep = get_pte(pgdir, la, 0);
     if (ptep != NULL) {
+        //删除映射
         page_remove_pte(pgdir, la, ptep);
     }
 }
@@ -340,20 +350,27 @@ void page_remove(pde_t *pgdir, uintptr_t la) {
 // return value: always 0
 // note: PT is changed, so the TLB need to be invalidate
 int page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
+    //pgdir是页表基址(satp)，page对应物理页面，la是虚拟地址
+    //先找到对应页表项的位置
     pte_t *ptep = get_pte(pgdir, la, 1);
     if (ptep == NULL) {
         return -E_NO_MEM;
     }
+    //增加page引用计数
     page_ref_inc(page);
+    //原先存在映射
     if (*ptep & PTE_V) {
         struct Page *p = pte2page(*ptep);
-        if (p == page) {
-            page_ref_dec(page);
+        if (p == page) {    //这个映射原来就有
+            page_ref_dec(page);//减少引用计数
         } else {
+            //原来这个虚拟地址映射到了其他物理页面，删除映射
             page_remove_pte(pgdir, la, ptep);
         }
     }
+    //构造页表项
     *ptep = pte_create(page2ppn(page), PTE_V | perm);
+    //刷新tlb
     tlb_invalidate(pgdir, la);
     return 0;
 }
@@ -391,6 +408,8 @@ static void check_alloc_page(void) {
     cprintf("check_alloc_page() succeeded!\n");
 }
 
+
+//映射关系是否实现
 static void check_pgdir(void) {
     // assert(npage <= KMEMSIZE / PGSIZE);
     // The memory starts at 2GB in RISC-V
@@ -405,24 +424,33 @@ static void check_pgdir(void) {
 
     struct Page *p1, *p2;
     p1 = alloc_page();
+    //给p1分配一个物理页面，并映射到0x0
     assert(page_insert(boot_pgdir, p1, 0x0, 0) == 0);
+
+    //ptep存储页表项地址
     pte_t *ptep;
     assert((ptep = get_pte(boot_pgdir, 0x0, 0)) != NULL);
     assert(pte2page(*ptep) == p1);
+    //检查引用计数
     assert(page_ref(p1) == 1);
 
-    ptep = (pte_t *)KADDR(PDE_ADDR(boot_pgdir[0]));
-    ptep = (pte_t *)KADDR(PDE_ADDR(ptep[0])) + 1;
+    ptep = (pte_t *)KADDR(PDE_ADDR(boot_pgdir[0])); //页目录中第一个页表的地址
+    ptep = (pte_t *)KADDR(PDE_ADDR(ptep[0])) + 1;   //页表第二个页表项地址
+    //get_pte查找某个虚拟地址对应的页表项，如果不存在这个页表项，会为它分配各级的页表
     assert(get_pte(boot_pgdir, PGSIZE, 0) == ptep);
 
     p2 = alloc_page();
+    //p2映射虚拟地址PGSIZE，设置可访问可写
     assert(page_insert(boot_pgdir, p2, PGSIZE, PTE_U | PTE_W) == 0);
+    //获取p2对应的页表项
     assert((ptep = get_pte(boot_pgdir, PGSIZE, 0)) != NULL);
+    //检查页表项是否设置权限
     assert(*ptep & PTE_U);
     assert(*ptep & PTE_W);
     assert(boot_pgdir[0] & PTE_U);
     assert(page_ref(p2) == 1);
 
+    //p1映射到PGSIZE
     assert(page_insert(boot_pgdir, p1, PGSIZE, 0) == 0);
     assert(page_ref(p1) == 2);
     assert(page_ref(p2) == 0);
@@ -430,16 +458,18 @@ static void check_pgdir(void) {
     assert(pte2page(*ptep) == p1);
     assert((*ptep & PTE_U) == 0);
 
+    //移除0x0的映射
     page_remove(boot_pgdir, 0x0);
     assert(page_ref(p1) == 1);
     assert(page_ref(p2) == 0);
 
+    //移除PGSIZE映射
     page_remove(boot_pgdir, PGSIZE);
     assert(page_ref(p1) == 0);
     assert(page_ref(p2) == 0);
 
     assert(page_ref(pde2page(boot_pgdir[0])) == 1);
-
+    //获取页目录指针pd1和其指向的页面pd0
     pde_t *pd1=boot_pgdir,*pd0=page2kva(pde2page(boot_pgdir[0]));
     free_page(pde2page(pd0[0]));
     free_page(pde2page(pd1[0]));
