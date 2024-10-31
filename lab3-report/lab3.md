@@ -68,14 +68,14 @@
 
     pde_t *pdep0 = &((pde_t *)KADDR(PDE_ADDR(*pdep1)))[PDX0(la)];
     if (!(*pdep0 & PTE_V)) {
-    	struct Page *page;
-    	if (!create || (page = alloc_page()) == NULL) {
-    		return NULL;
-    	}
-    	set_page_ref(page, 1);
-    	uintptr_t pa = page2pa(page);
-    	memset(KADDR(pa), 0, PGSIZE);
-    	*pdep0 = pte_create(page2ppn(page), PTE_U | PTE_V);
+     struct Page *page;
+     if (!create || (page = alloc_page()) == NULL) {
+      return NULL;
+     }
+     set_page_ref(page, 1);
+     uintptr_t pa = page2pa(page);
+     memset(KADDR(pa), 0, PGSIZE);
+     *pdep0 = pte_create(page2ppn(page), PTE_U | PTE_V);
     }
 ```
 
@@ -90,6 +90,7 @@
 **请在实验报告中简要说明你的设计实现过程。请回答如下问题：**
 
 - 补全后的do_pgfault函数代码如下：(其实指导书里面有)
+
 ```cpp{.line-numbers}
 int
 do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
@@ -204,22 +205,117 @@ stval，它会记录一些中断处理所需要的辅助信息，比如指令获
 
 在trap中判断该异常产生的原因并进行处理，如果是缺页异常，则根据异常信息找到缺失的页面，并将该页从磁盘中加载到内存中相应的位置，并更新页表项。（具体执行流程请看练习一的回答）
 
-
 - **数据结构Page的全局变量（其实是一个数组）的每一项与页表中的页目录项和页表项有无对应关系？如果有，其对应关系是啥？**
 
 每个页表项对应一个物理页，每个页目录项指向一个页表，一个页表包含多个页表项。
 
 #### 练习4：补充完成Clock页替换算法（需要编程）
 
-通过之前的练习，相信大家对FIFO的页面替换算法有了更深入的了解，现在请在我们给出的框架上，填写代码，实现 Clock页替换算法（mm/swap_clock.c）。
-请在实验报告中简要说明你的设计实现过程。请回答如下问题：
+**通过之前的练习，相信大家对FIFO的页面替换算法有了更深入的了解，现在请在我们给出的框架上，填写代码，实现 Clock页替换算法（mm/swap_clock.c）。**
+**请在实验报告中简要说明你的设计实现过程。请回答如下问题：**
 
-- 比较Clock页替换算法和FIFO算法的不同。
+- 初始化用于Clock算法的链表
+
+```cpp{.line-numbers}
+static int
+_clock_init_mm(struct mm_struct *mm)
+{     
+     /*LAB3 EXERCISE 4: 2211489*/ 
+     // 初始化pra_list_head为空链表
+    list_init(&pra_list_head);
+     // 初始化当前指针curr_ptr指向pra_list_head，表示当前页面替换位置为链表头
+    curr_ptr = &pra_list_head;
+     // 将mm的私有成员指针指向pra_list_head，用于后续的页面替换算法操作
+    mm->sm_priv = &pra_list_head;
+     //cprintf(" mm->sm_priv %x in fifo_init_mm\n",mm->sm_priv);
+     return 0;
+}
+```
+
+- 将新访问的页面加入到链表中，并设置访问标志位为1
+
+```cpp{.line-numbers}
+static int
+_clock_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
+{
+    //record the page access situlation
+    /*LAB3 EXERCISE 4: 2211489*/ 
+    // link the most recent arrival page at the back of the pra_list_head qeueue.
+    // 将页面page插入到页面链表pra_list_head的末尾
+    list_entry_t* head = (list_entry_t*)mm->sm_priv;
+    list_entry_t* entry = &(page->pra_page_link);
+    assert(entry != NULL && head != NULL);
+    list_add(head, entry);
+    // 将页面的visited标志置为1，表示该页面已被访问
+    page->visited = 1;
+    return 0;
+}
+```
+
+- 选择换出的页面
+  - 首先获取链表头指针
+  - 进入循环遍历，寻找换出页面
+
+```cpp{.line-numbers}
+static int
+_clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
+{
+     list_entry_t *head=(list_entry_t*) mm->sm_priv;
+         assert(head != NULL);
+     assert(in_tick==0);
+     while (1) {
+         /*LAB3 EXERCISE 4: 2211489*/
+         // 编写代码
+         // 遍历页面链表pra_list_head，查找最早未被访问的页面
+         //从链表尾向前遍历
+         list_entry_t* entry = list_prev(head);//链表尾节点
+         // 获取当前页面对应的Page结构指针
+         struct Page* p = le2page(entry, pra_page_link);
+         if (entry == head) {//到达头节点，再回尾节点
+             entry = list_prev(head);
+         }
+         // 如果当前页面未被访问，则将该页面从页面链表中删除，并将该页面指针赋值给ptr_page作为换出页面
+         if (p->visited == 0)
+         {
+             list_del(entry);
+             *ptr_page = le2page(entry, pra_page_link);
+             cprintf("curr_ptr %p\n", curr_ptr);    //打印
+             break;
+
+         }
+         // 如果当前页面已被访问，则将visited标志置为0，表示该页面已被重新访问
+         if (p->visited == 1)
+         {
+             p->visited = 0;
+             curr_ptr = entry;
+             entry = list_prev(entry);  //继续向前遍历
+         }
+     }
+    return 0;
+}
+```
+
+- 运行结果
+  - make qemu
+  ![alt text](qemu1.png)
+  ![alt text](qemu2.png)
+  - make grade
+![alt text](grade.png)
+
+- **比较Clock页替换算法和FIFO算法的不同。**
+FIFO算法按照页面进入内存的时间维护一个队列，每次选择换出的页面，是最早进入队列的页面，并不考虑页面是否被访问过，存在Belady现象。
+而Clock通过引入访问位，维护一个双向链表，选择最近一段时间未被访问过的页面作为被换出的页面，避免Belady现象
 
 #### 练习5：阅读代码和实现手册，理解页表映射方式相关知识（思考题）
 
-如果我们采用”一个大页“ 的页表映射方式，相比分级页表，有什么好处、优势，有什么坏处、风险？
+**如果我们采用“一个大页” 的页表映射方式，相比分级页表，有什么好处、优势，有什么坏处、风险？**
+
+- **优势：**
+  - 只需要维护一个页表，便于管理与维护
+  - 减少页表层级的访问，加快了对物理页的访问速度，提高访存性能
+
+- **风险：**
+  - 如果一个进程只需要一小部分内存，但系统需要使用一个“大页”来映射，剩余的内存空间未被充分利用，造成内存碎片
+  - 一个大页中，未被用到的虚拟地址也被记载进了页表中，增大了内存开销
 
 #### 扩展练习 Challenge：实现不考虑实现开销和效率的LRU页替换算法（需要编程）
-
-challenge部分不是必做部分，不过在正确最后会酌情加分。需写出有详细的设计、分析和测试的实验报告。完成出色的可获得适当加分。
