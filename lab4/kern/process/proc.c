@@ -102,7 +102,24 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+     // 初始化进程结构体的各个字段
+        proc->state = PROC_UNINIT;            // 初始状态为未初始化
+        proc->pid = -1;                       // PID 未分配
+        proc->runs = 0;                       // 运行次数为 0
+        proc->kstack = 0;                     // 内核栈地址初始化为 0
+        proc->need_resched = 0;           // 初始不需要重新调度
+        proc->parent = NULL;                  // 父进程指针初始化为 NULL
+        proc->mm = NULL;                      // 内存管理结构体指针初始化为 NULL
 
+        // 初始化 context 字段
+        memset(&proc->context, 0, sizeof(struct context));
+
+        proc->tf = NULL;                      // 陷阱帧初始化为 NULL
+        proc->cr3 = boot_cr3;                        // CR3 寄存器值初始化
+        proc->flags = 0;                      // 进程标志初始化为 0
+        
+        // 初始化进程名称为一个空字符串
+        memset(proc->name, 0, PROC_NAME_LEN + 1);
 
     }
     return proc;
@@ -172,7 +189,18 @@ proc_run(struct proc_struct *proc) {
         *   lcr3():                   Modify the value of CR3 register
         *   switch_to():              Context switching between two processes
         */
-       
+        uint32_t intr_flag; // 用于保存中断状态
+        // 禁用中断
+        local_intr_save(intr_flag);
+
+        // 加载新进程的页目录表基地址
+        lcr3(proc->cr3);
+
+        // 进行上下文切换
+        switch_to(current, proc);
+
+        // 启用中断
+        local_intr_restore(intr_flag);
     }
 }
 
@@ -299,7 +327,24 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
 
-    
+    proc = alloc_proc();
+    if (proc == NULL) {
+        goto bad_fork_cleanup_proc; // 分配进程结构失败
+    }
+
+    if (setup_kstack(proc) != 0) {
+        goto bad_fork_cleanup_proc; // 分配内核栈失败
+    }
+
+    copy_mm(clone_flags,proc); // 复制或共享内存管理信息
+
+    copy_thread(proc, stack,tf); // 设置陷阱帧和上下文
+
+    hash_proc(proc); // 添加进程到哈希列表
+    list_add(&proc->list_link, &proc_list);  // 添加进程到进程列表
+
+    wakeup_proc(proc); // 使新进程可运行
+    ret = proc->pid; // 设置返回值为新进程的 PID
 
 fork_out:
     return ret;
