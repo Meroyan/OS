@@ -189,16 +189,19 @@ proc_run(struct proc_struct *proc) {
         *   lcr3():                   Modify the value of CR3 register
         *   switch_to():              Context switching between two processes
         */
-        uint32_t intr_flag; // 用于保存中断状态
+        bool intr_flag; // 用于保存中断状态
+        struct proc_struct *prev = current, *next = proc;
         // 禁用中断
         local_intr_save(intr_flag);
+        {
+            current = proc;
 
-        // 加载新进程的页目录表基地址
-        lcr3(proc->cr3);
+            // 加载新进程的页目录表基地址
+            lcr3(next->cr3);
 
-        // 进行上下文切换
-        switch_to(current, proc);
-
+            // 进行上下文切换
+            switch_to(&(prev->context), &(next->context));
+        }
         // 启用中断
         local_intr_restore(intr_flag);
     }
@@ -336,12 +339,21 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto bad_fork_cleanup_proc; // 分配内核栈失败
     }
 
-    copy_mm(clone_flags,proc); // 复制或共享内存管理信息
+    if(copy_mm(clone_flags,proc)!=0){
+        goto bad_fork_cleanup_proc;
+    }; // 复制或共享内存管理信息
 
     copy_thread(proc, stack,tf); // 设置陷阱帧和上下文
 
+    bool intr_flag;
+    local_intr_save(intr_flag);//屏蔽中断，intr_flag置为1
+    {
+    proc->pid = get_pid();//获取当前进程PID
     hash_proc(proc); // 添加进程到哈希列表
-    list_add(&proc->list_link, &proc_list);  // 添加进程到进程列表
+    list_add(&proc_list,&(proc->list_link));  // 添加进程到进程列表
+    nr_process++;
+    }
+    local_intr_restore(intr_flag);//恢复中断
 
     wakeup_proc(proc); // 使新进程可运行
     ret = proc->pid; // 设置返回值为新进程的 PID

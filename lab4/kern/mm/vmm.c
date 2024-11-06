@@ -381,6 +381,11 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
             //map of phy addr <--->
             //logical addr
             //(3) make the page swappable.
+            swap_in(mm, addr, &page);
+            //page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm)
+            //page对应物理页面，la是虚拟地址
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
             page->pra_vaddr = addr;
         } else {
             cprintf("no swap_init_ok but ptep is %x, failed\n", *ptep);
