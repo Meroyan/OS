@@ -470,29 +470,46 @@ failed:
 }
 
 bool
-user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
+user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {   
+    // 检查从addr开始，长为len的一段内存能否被【用户态】程序访问
+    // mm 是进程的内存描述符，通常在每个进程的内存管理中都有对应的 mm_struct 结构体
+    // 如果 mm 不为 NULL，则表示我们正在检查一个有效进程的内存区域；
+    // 否则，表示我们要检查的是内核空间
     if (mm != NULL) {
+        // 如果内存区域不属于用户进程
         if (!USER_ACCESS(addr, addr + len)) {
             return 0;
         }
+
         struct vma_struct *vma;
         uintptr_t start = addr, end = addr + len;
+        // while循环遍历访问区域的整个范围
         while (start < end) {
+            // 如果找不到vma 或者start不在vma的有效范围内
             if ((vma = find_vma(mm, start)) == NULL || start < vma->vm_start) {
                 return 0;
             }
+
+            // 没有相应权限
             if (!(vma->vm_flags & ((write) ? VM_WRITE : VM_READ))) {
                 return 0;
             }
+
+            // 写操作 且 vma的标记是栈区
             if (write && (vma->vm_flags & VM_STACK)) {
+                // 如果访问的地址在栈的开始部分 且栈的大小不足一个页面大小
                 if (start < vma->vm_start + PGSIZE) { //check stack start & size
                     return 0;
                 }
             }
+
+            // 更新start，继续检查下一个区域
             start = vma->vm_end;
         }
         return 1;
     }
+
+    // 调用KERN_ACCESS，判断是否可以访问内核空间
     return KERN_ACCESS(addr, addr + len);
 }
 
