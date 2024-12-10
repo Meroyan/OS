@@ -420,40 +420,65 @@ bad_fork_cleanup_proc:
 //   3. call scheduler to switch to other process
 int
 do_exit(int error_code) {
+    // 检查当前进程是否为idle或init，如果是，发出panic
     if (current == idleproc) {
         panic("idleproc exit.\n");
     }
     if (current == initproc) {
         panic("initproc exit.\n");
     }
+
+    // 获取当前进程的内存管理结构mm
     struct mm_struct *mm = current->mm;
-    if (mm != NULL) {
+
+    // 如果mm不为空，说明是用户进程
+    if (mm != NULL) 
+    {
+        // 切换到内核页表，确保接下来的操作在内核空间执行
         lcr3(boot_cr3);
-        if (mm_count_dec(mm) == 0) {
+
+        // 如果mm引用计数减到0，说明没有其他进程共享此mm
+        if (mm_count_dec(mm) == 0) 
+        {
+            // 释放用户虚拟内存空间相关的资源
             exit_mmap(mm);
             put_pgdir(mm);
             mm_destroy(mm);
         }
+        // 将当前进程的mm设置为NULL，表示资源已经释放
         current->mm = NULL;
     }
+
+    // 设置进程状态为PROC_ZOMBIE，表示进程已退出
     current->state = PROC_ZOMBIE;
     current->exit_code = error_code;
     bool intr_flag;
     struct proc_struct *proc;
+
+    // 关中断
     local_intr_save(intr_flag);
     {
+        // 获取当前进程的父进程
         proc = current->parent;
+
+        // 如果父进程处于等待子进程状态，则唤醒父进程
         if (proc->wait_state == WT_CHILD) {
             wakeup_proc(proc);
         }
-        while (current->cptr != NULL) {
+
+        // 遍历当前进程的所有子进程
+        while (current->cptr != NULL) 
+        {
             proc = current->cptr;
             current->cptr = proc->optr;
-    
+
+            // 设置子进程的父进程为initproc，并加入initproc的子进程链表
             proc->yptr = NULL;
             if ((proc->optr = initproc->cptr) != NULL) {
                 initproc->cptr->yptr = proc;
             }
+
+            // 如果子进程也处于退出状态，唤醒initproc
             proc->parent = initproc;
             initproc->cptr = proc;
             if (proc->state == PROC_ZOMBIE) {
@@ -463,8 +488,14 @@ do_exit(int error_code) {
             }
         }
     }
+
+    // 开中断
     local_intr_restore(intr_flag);
+
+    // 调用调度器，选择新的进程执行
     schedule();
+
+    // 如果执行到这里，表示代码执行出现错误，发出panic
     panic("do_exit will not return!! %d.\n", current->pid);
 }
 
@@ -620,35 +651,49 @@ bad_mm:
 
 // do_execve - call exit_mmap(mm)&put_pgdir(mm) to reclaim memory space of current process
 //           - call load_icode to setup new memory space accroding binary prog.
+// 回收内存，设置新的内存空间
 int
 do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
-    struct mm_struct *mm = current->mm;
+    struct mm_struct *mm = current->mm;     // 获取当前进程的内存管理结构体
+    // 检查name的内存空间能否被访问
     if (!user_mem_check(mm, (uintptr_t)name, len, 0)) {
         return -E_INVAL;
     }
+
+    // 处理程序名称长度
     if (len > PROC_NAME_LEN) {
         len = PROC_NAME_LEN;
     }
 
+    // 复制程序名称
     char local_name[PROC_NAME_LEN + 1];
     memset(local_name, 0, sizeof(local_name));
     memcpy(local_name, name, len);
 
+    // 如果当前进程有虚拟内存映射
     if (mm != NULL) {
         cputs("mm != NULL");
-        lcr3(boot_cr3);
-        if (mm_count_dec(mm) == 0) {
-            exit_mmap(mm);
-            put_pgdir(mm);
-            mm_destroy(mm);
+        lcr3(boot_cr3);         // 设置页目录指针寄存器cr3
+        if (mm_count_dec(mm) == 0)
+        {
+            exit_mmap(mm);      // 释放内存映射
+            put_pgdir(mm);      // 释放页目录相关资源
+            mm_destroy(mm);     // 释放内存管理资源，之后重新分配
         }
         current->mm = NULL;
     }
+
     int ret;
+    // 加载新程序的二进制代码失败
     if ((ret = load_icode(binary, size)) != 0) {
         goto execve_exit;
     }
+
+    // 给新程序命名
     set_proc_name(current, local_name);
+    // 如果set_proc_name的实现不变, 为什么不能直接set_proc_name(current, name)?
+    // 程序名称有长度限制，可能溢出
+
     return 0;
 
 execve_exit:
