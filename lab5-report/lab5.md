@@ -2,7 +2,80 @@
 
 #### 练习0：填写已有实验
 
-本实验依赖实验2/3/4。请把你做的实验2/3/4的代码填入本实验中代码中有“LAB2”/“LAB3”/“LAB4”的注释相应部分。注意：为了能够正确执行lab5的测试应用程序，可能需对已完成的实验2/3/4的代码进行进一步改进。
+**本实验依赖实验2/3/4。请把你做的实验2/3/4的代码填入本实验中代码中有“LAB2”/“LAB3”/“LAB4”的注释相应部分。注意：为了能够正确执行lab5的测试应用程序，可能需对已完成的实验2/3/4的代码进行进一步改进。**'
+
+- 在**alloc_proc**中，将lab4代码按照注释要求修改代码如下所示：
+
+```cpp{.line-numbers}
+        // 初始化进程结构体的各个字段
+        proc->state = PROC_UNINIT;            // 初始状态为未初始化
+        proc->pid = -1;                       // PID 未分配
+        proc->runs = 0;                       // 运行次数为 0
+        proc->kstack = 0;                     // 内核栈地址初始化为 0
+        proc->need_resched = 0;           // 初始不需要重新调度
+        proc->parent = NULL;                  // 父进程指针初始化为 NULL
+        proc->mm = NULL;                      // 内存管理结构体指针初始化为 NULL
+
+        // 初始化 context 字段
+        memset(&proc->context, 0, sizeof(struct context));
+
+        proc->tf = NULL;                      // 陷阱帧初始化为 NULL
+        proc->cr3 = boot_cr3;                 // CR3 寄存器值初始化
+        proc->flags = 0;                      // 进程标志初始化为 0
+
+        // 初始化进程名称为一个空字符串
+        memset(proc->name, 0, PROC_NAME_LEN + 1);
+
+        // [新增]
+        proc->wait_state = 0;
+        proc->cptr = NULL;      // Child Pointer 表示当前进程的子进程
+        proc->optr = NULL;      // Older Sibling Pointer 表示当前进程的上一个兄弟进程
+        proc->yptr = NULL;      // Younger Sibling Pointer 表示当前进程的下一个兄弟进程
+```
+
+- 在**do_fork**中，将lab4代码按照注释要求修改代码如下所示：
+
+```cpp{.line-numbers}
+    // 分配进程结构体
+    proc = alloc_proc();
+    if (proc == NULL) {
+        goto fork_out; // 分配进程结构失败
+    }
+
+    // [添加] 设置子进程的父进程为当前进程，确保当前进程的wait_state = 0
+    proc->parent = current;
+    assert(current->wait_state == 0);
+
+    // 分配内核栈
+    if (setup_kstack(proc) != 0) {
+        goto bad_fork_cleanup_proc; // 分配内核栈失败
+    }
+
+    // 复制父进程的内存管理信息
+    if (copy_mm(clone_flags, proc) != 0) {
+        goto bad_fork_cleanup_proc;
+    };
+
+    // 设置新进程的中断帧和上下文
+    copy_thread(proc, stack, tf);
+
+    bool intr_flag;
+    local_intr_save(intr_flag);//屏蔽中断，intr_flag置为1
+    {
+        proc->pid = get_pid();//获取当前进程PID
+        hash_proc(proc); // 添加进程到哈希列表
+        list_add(&proc_list, &(proc->list_link));  // 添加进程到进程列表
+        nr_process++;
+
+        // [添加] 设置进程关系的连接
+        set_links(proc);
+    }
+    local_intr_restore(intr_flag);//恢复中断
+
+    wakeup_proc(proc); // 使新进程可运行
+    ret = proc->pid; // 设置返回值为新进程的 PID
+
+```
 
 #### 练习1：加载应用程序并执行（需要编码）
 
