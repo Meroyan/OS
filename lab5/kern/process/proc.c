@@ -223,7 +223,7 @@ get_pid(void) {
 void
 proc_run(struct proc_struct *proc) {
     if (proc != current) {
-        // LAB4:EXERCISE3 YOUR CODE
+        // LAB4:EXERCISE3 2213870
         /*
         * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
         * MACROs or Functions:
@@ -232,6 +232,22 @@ proc_run(struct proc_struct *proc) {
         *   lcr3():                   Modify the value of CR3 register
         *   switch_to():              Context switching between two processes
         */
+
+        bool intr_flag; // 用于保存中断状态
+        struct proc_struct* prev = current, * next = proc;
+        // 禁用中断
+        local_intr_save(intr_flag);
+        {
+            current = proc;
+
+            // 加载新进程的页目录表基地址
+            lcr3(next->cr3);
+
+            // 进行上下文切换
+            switch_to(&(prev->context), &(next->context));
+        }
+        // 启用中断
+        local_intr_restore(intr_flag);
 
     }
 }
@@ -953,16 +969,19 @@ user_main(void *arg) {
 }
 
 // init_main - the second kernel thread used to create user_main kernel threads
+// 创建用户线程
 static int
 init_main(void *arg) {
-    size_t nr_free_pages_store = nr_free_pages();
-    size_t kernel_allocated_store = kallocated();
+    size_t nr_free_pages_store = nr_free_pages();   // 可用空闲内存页面
+    size_t kernel_allocated_store = kallocated();   // 内核已分配内存数量
 
+    // 创建用户线程
     int pid = kernel_thread(user_main, NULL, 0);
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
 
+    // 系统调用
     while (do_wait(0, NULL) == 0) {
         schedule();
     }
