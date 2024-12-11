@@ -335,8 +335,10 @@ void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
         d0start = d1start;
     } while (d1start != 0 && d1start < end);
 }
+
 /* copy_range - copy content of memory (start, end) of one process A to another
  * process B
+ * 进程A的内存复制到进程B
  * @to:    the addr of process B's Page Directory
  * @from:  the addr of process A's Page Directory
  * @share: flags to indicate to dup OR share. We just use dup method, so it
@@ -348,16 +350,20 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
                bool share) {
     assert(start % PGSIZE == 0 && end % PGSIZE == 0);
     assert(USER_ACCESS(start, end));
-    // copy content by page unit.
+
+    // copy content by page unit.   按页复制
     do {
         // call get_pte to find process A's pte according to the addr start
+        // 使用 get_pte 获取进程 A 的页表项（PTE）
         pte_t *ptep = get_pte(from, start, 0), *nptep;
         if (ptep == NULL) {
             start = ROUNDDOWN(start + PTSIZE, PTSIZE);
             continue;
         }
+
         // call get_pte to find process B's pte according to the addr start. If
         // pte is NULL, just alloc a PT
+        // 使用 get_pte 获取进程 B 的页表项（PTE），如果没有就分配
         if (*ptep & PTE_V) {
             if ((nptep = get_pte(to, start, 1)) == NULL) {
                 return -E_NO_MEM;
@@ -370,25 +376,36 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             assert(page != NULL);
             assert(npage != NULL);
             int ret = 0;
-            /* LAB5:EXERCISE2 YOUR CODE
+            /* LAB5:EXERCISE2 2211489
              * replicate content of page to npage, build the map of phy addr of
              * nage with the linear addr start
+             * 将页面内容复制到新页面npage，并建立物理地址与线性地址start之间的映射。
              *
              * Some Useful MACROs and DEFINEs, you can use them in below
              * implementation.
              * MACROs or Functions:
              *    page2kva(struct Page *page): return the kernel vritual addr of
              * memory which page managed (SEE pmm.h)
+             *    返回由page管理的内存的内核虚拟地址 (参见 pmm.h)
              *    page_insert: build the map of phy addr of an Page with the
              * linear addr la
+             *    建立一个Page的物理地址与线性地址la之间的映射
              *    memcpy: typical memory copy function
              *
              * (1) find src_kvaddr: the kernel virtual address of page
              * (2) find dst_kvaddr: the kernel virtual address of npage
              * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
              * (4) build the map of phy addr of  nage with the linear addr start
+             * (1) 找到src_kvaddr：页面page的内核虚拟地址
+             * (2) 找到dst_kvaddr：新页面npage的内核虚拟地址
+             * (3) 从src_kvaddr到dst_kvaddr进行内存复制，大小为PGSIZE（页面大小）
+             * (4) 建立新页面npage的物理地址与线性地址start之间的映射
              */
 
+            void* src_kvaddr = page2kva(page);
+            void* dst_kvaddr = page2kva(npage);
+            memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+            ret = page_insert(tp, npage, start, perm);
 
             assert(ret == 0);
         }
