@@ -64,8 +64,8 @@
     {
         proc->pid = get_pid();//获取当前进程PID
         hash_proc(proc); // 添加进程到哈希列表
-        list_add(&proc_list, &(proc->list_link));  // 添加进程到进程列表
-        nr_process++;
+        //list_add(&proc_list, &(proc->list_link));  // 添加进程到进程列表
+        //nr_process++;
 
         // [添加] 设置进程关系的连接
         set_links(proc);
@@ -135,9 +135,6 @@
 
 10. 通过__trapret函数RESTORE_ALL，然后sret跳转到epc指向的函数（tf->epc = elf->e_entry），即用户程序的入口。执行应用程序第一条指令。
 
-
-
-
 ### 练习2：父进程复制自己的内存空间给子进程（需要编码）
 
 **创建子进程的函数do_fork在执行中将拷贝当前进程（即父进程）的用户内存地址空间中的合法内容到新进程中（子进程），完成内存资源的复制。具体是通过copy_range函数（位于kern/mm/pmm.c中）实现的，请补充copy_range的实现，确保能够正确执行。**
@@ -167,20 +164,54 @@
 
 >Copy-on-write（简称COW）的基本概念是指如果有多个使用者对一个资源A（比如内存块）进行读操作，则每个使用者只需获得一个指向同一个资源A的指针，就可以该资源了。若某使用者需要对这个资源A进行写操作，系统会对该资源进行拷贝操作，从而使得该“写操作”使用者获得一个该资源A的“私有”拷贝—资源B，可对资源B进行写操作。该“写操作”使用者对资源B的改变对于其他的使用者而言是不可见的，因为其他使用者看到的还是资源A。
 
-
-
 ### 练习3： 阅读分析源代码，理解进程执行 fork/exec/wait/exit 的实现，以及系统调用的实现（不需要编码）
 
 **请在实验报告中简要说明你对 fork/exec/wait/exit函数的分析。并回答如下问题：**
 
 - **请分析fork/exec/wait/exit的执行流程。重点关注哪些操作是在用户态完成，哪些是在内核态完成？内核态与用户态程序是如何交错执行的？内核态执行结果是如何返回给用户程序的？**
 
+1. **fork：**
+   - 调用过程：user/libs/ulib.c中**fork()** -> users/libs/syscall.c中**sys_fork()** -> kern/syscall/syscall.c中**syscall(SYS_fork)** -> kern/process/proc.c中**do_fork()**
+     - 用户态：fork() -> sys_fork() -> syscall(SYS_fork)
+     - 内核态：sys_fork() -> do_fork()
+   - 执行流程：
+     - 程序执行fork时， 调用sys_fork函数，在sys_fork函数中，进行系统调用syscall(SYS_fork)，系统调用SYS_fork调用do_fork
+     - do_fork完成了分配进程结构体，分配内核栈，复制或共享父进程内核管理信息，设置子进程中断帧和上下文，分配进程pid，将进程加入到进程列表中，设置进程关系的连接，设置进程状态，返回子进程pid
 
+2. **exec：**
+   - 调用过程：kern/syscall/syscall.c中**sys_exec()** -> kern/process/proc.c中**do_execve()**
+     - 内核态：sys_exec() -> do_execve()
+   - 执行流程：
+     - 程序执行wait时， 调用sys_wait函数，在sys_wait函数中，进行系统调用syscall(SYS_wait, pid, store)，系统调用SYS_wait调用do_wait
+     - do_execve完成了回收内存，分配新的内存空间，调用load_icode将新程序代码加载进来
 
-- **请给出ucore中一个用户态进程的执行状态生命周期图（包执行状态，执行状态之间的变换关系，以及产生变换的事件或函数调用）。（字符方式画即可）**
+3. **wait：** 
+   - 调用过程：user/libs/ulib.c中**wait()** -> users/libs/syscall.c中**sys_wait()** -> kern/syscall/syscall.c中**syscall(SYS_wait, pid, store)** -> kern/process/proc.c中**do_wait()**
+     - 用户态：wait() -> sys_wait() -> syscall(SYS_wait, pid, store)
+     - 内核态：syscall(SYS_wait, pid, store) -> do_wait()
+   - 执行流程：
+     - 程序执行wait时， 调用sys_wait函数，在sys_wait函数中，进行系统调用syscall(SYS_wait, pid, store)，系统调用SYS_wait调用do_wait
+     - do_wait完成了找到处于僵尸态的进程，通过父进程完成对子进程资源的回收；如果没有找到僵尸态进程，则自身进入睡眠状态等待唤醒
+
+4. **exit：** 
+   - 调用过程：user/libs/ulib.c中**exit()** -> users/libs/syscall.c中**sys_exit()** -> kern/syscall/syscall.c中**syscall(SYS_exit, error_code)** -> kern/process/proc.c中**do_exit()**
+     - 用户态：exit() -> sys_exit() -> syscall(SYS_exit, error_code)
+     - 内核态：syscall(SYS_exit, error_code) -> do_exit()
+   - 执行流程：
+     - 程序执行exit时， 调用sys_exit函数，在sys_exit函数中，进行系统调用syscall(SYS_exit, error_code)，系统调用SYS_exit调用do_exit
+     - do_exit完成了如果当前进程的内存管理结构未被其他进程使用，则释放虚拟内存空间，设置当前进程为僵尸进程后唤醒父进程，调用schedule切换至其他进程
+
+5. 用户态通过发起系统调用产生ebreak异常切换到内核态；内核态通过调用sret指令回到用户态
+
+6. 内核态执行的结果通过kernel_execve_ret将中断帧添加到线程的内核栈中，从而将结果返回给用户 
+
+- **请给出ucore中一个用户态进程的执行状态生命周期图（包括执行状态，执行状态之间的变换关系，以及产生变换的事件或函数调用）。（字符方式画即可）**
+
+![alt text](框架.png)
 
 **执行：make grade。如果所显示的应用程序检测都输出ok，则基本正确。（使用的是qemu-1.0.1）**
 
+![alt text](grade.jpg)
 
 
 ### 扩展练习 Challenge：
