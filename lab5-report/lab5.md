@@ -113,6 +113,19 @@
 
 3. 为了正确设置程序的状态，应该将SPP和SPIE进行清零，表示进入中断前，程序处于用户态，并且在进行中断处理期间应该禁用中断。
 
+4. 设计思想：
+   - 在**init_main**中，通过kernel_thread(user_main, NULL, 0)，去执行user_main函数。
+   - 在**user_main**中，调用kernel_thread。
+   - 在**kernel_thread**中，通过ebreak产生断点中断进行处理。
+
+  >由于目前我们在S mode下，所以不能通过ecall来产生中断。我们这里采取一个取巧的办法，用ebreak产生断点中断进行处理，通过设置a7寄存器的值为10说明这不是一个普通的断点中断，而是要转发到syscall(), 这样用一个不是特别优雅的方式，实现了在内核态使用系统调用。
+
+   - 在**exception_handler**中，会进行系统调用处理，系统调用会被进一步转发给proc.c中的do_execve函数。
+   - 在**do_execve**中，会回收内存，并未为新程序分配内存空间，调用load_icode将新程序代码加载进来。
+   - 而在**load_icode**中设置了中断帧的内容，特别是对SSTATUS_SPP进行了清零操作。
+往后一层一层调用、返回之后，完成了中断处理，这时，会根据SPP为0，判断出应该返回到用户态。
+   - 这样就完成了user_main被创建后，从内核到到用户态的全过程。
+
 - **请简要描述这个用户态进程被ucore选择占用CPU执行（RUNNING态）到具体执行应用程序第一条指令的整个经过。**
 
 1. 在**init_main**中，通过kernel_thread调用do_fork函数创建一个新的线程，并通过wakeup_proc唤醒线程，此时线程状态变为PROC_RUNNABLE

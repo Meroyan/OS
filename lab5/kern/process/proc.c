@@ -933,7 +933,7 @@ kernel_execve(const char *name, unsigned char *binary, size_t size) {
     int64_t ret=0, len = strlen(name);
  //   ret = do_execve(name, len, binary, size);
     asm volatile(
-        "li a0, %1\n"
+        "li a0, %1\n"   // SYS_exec´æµ½a0
         "lw a1, %2\n"
         "lw a2, %3\n"
         "lw a3, %4\n"
