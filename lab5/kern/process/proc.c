@@ -484,12 +484,13 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     {
         proc->pid = get_pid();//获取当前进程PID
         hash_proc(proc); // 添加进程到哈希列表
-        list_add(&proc_list, &(proc->list_link));  // 添加进程到进程列表
-        nr_process++;
+        //list_add(&proc_list, &(proc->list_link));  // 添加进程到进程列表
+        //nr_process++;
 
         // [添加] 设置进程关系的连接
         set_links(proc);
     }
+
     local_intr_restore(intr_flag);//恢复中断
 
     wakeup_proc(proc); // 使新进程可运行
@@ -842,6 +843,8 @@ do_yield(void) {
 int
 do_wait(int pid, int *code_store) {
     struct mm_struct *mm = current->mm;
+
+    // 检查当前进程的内存地址空间是否有效
     if (code_store != NULL) {
         if (!user_mem_check(mm, (uintptr_t)code_store, sizeof(int), 1)) {
             return -E_INVAL;
@@ -850,10 +853,12 @@ do_wait(int pid, int *code_store) {
 
     struct proc_struct *proc;
     bool intr_flag, haskid;
+
+    // 查找并等待指定的子进程
 repeat:
     haskid = 0;
     if (pid != 0) {
-        proc = find_proc(pid);
+        proc = find_proc(pid);  // 查找pid对应的进程
         if (proc != NULL && proc->parent == current) {
             haskid = 1;
             if (proc->state == PROC_ZOMBIE) {
@@ -861,6 +866,7 @@ repeat:
             }
         }
     }
+    // pid==0，查找当前进程的所有直接子进程
     else {
         proc = current->cptr;
         for (; proc != NULL; proc = proc->optr) {
@@ -870,6 +876,8 @@ repeat:
             }
         }
     }
+
+    // 没有找到期待的进程，进入睡眠状态
     if (haskid) {
         current->state = PROC_SLEEPING;
         current->wait_state = WT_CHILD;
@@ -882,20 +890,23 @@ repeat:
     return -E_BAD_PROC;
 
 found:
+    // 系统进程无法退出
     if (proc == idleproc || proc == initproc) {
         panic("wait idleproc or initproc.\n");
     }
     if (code_store != NULL) {
         *code_store = proc->exit_code;
     }
+
+    // 禁用中断
     local_intr_save(intr_flag);
     {
-        unhash_proc(proc);
-        remove_links(proc);
+        unhash_proc(proc);  // 从哈希表中删除子进程条目
+        remove_links(proc); // 移除子进程在进程链表中的连接
     }
-    local_intr_restore(intr_flag);
-    put_kstack(proc);
-    kfree(proc);
+    local_intr_restore(intr_flag);  // 恢复中断
+    put_kstack(proc);       // 清理栈
+    kfree(proc);            // 释放内存
     return 0;
 }
 
