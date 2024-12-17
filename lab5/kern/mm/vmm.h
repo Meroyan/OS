@@ -62,6 +62,7 @@ extern struct mm_struct *check_mm_struct;
 bool user_mem_check(struct mm_struct *mm, uintptr_t start, size_t len, bool write);
 bool copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, bool writable);
 bool copy_to_user(struct mm_struct *mm, void *dst, const void *src, size_t len);
+//int copy_range(pde_t to, pde_t from, uintptr_t start, uintptr_t end, bool share);
 
 static inline int
 mm_count(struct mm_struct *mm) {

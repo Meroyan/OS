@@ -177,6 +177,10 @@
 
 >Copy-on-write（简称COW）的基本概念是指如果有多个使用者对一个资源A（比如内存块）进行读操作，则每个使用者只需获得一个指向同一个资源A的指针，就可以该资源了。若某使用者需要对这个资源A进行写操作，系统会对该资源进行拷贝操作，从而使得该“写操作”使用者获得一个该资源A的“私有”拷贝—资源B，可对资源B进行写操作。该“写操作”使用者对资源B的改变对于其他的使用者而言是不可见的，因为其他使用者看到的还是资源A。
 
+要实现写时拷贝（Copy on Write, COW）机制，在复制父进程内存空间给子进程时，不需要直接复制整个内存页，而是仅复制页表项。然后，将父进程和子进程的页表项都设置为只读权限。这样，两个进程将共享相同的内存页，可以同时访问该页。当其中一个进程尝试写入时，会触发缺页异常。在缺页异常处理函数中，内核会复制整个内存页，并将该页的权限设置为可写，从而允许写入操作。
+
+当某个共享页面只剩下一个进程访问时，可以将该页面的权限恢复为可写，以便该进程可以对该页面进行修改。更详细的实现将在后文的 Challenge1 中展示。
+
 ### 练习3： 阅读分析源代码，理解进程执行 fork/exec/wait/exit 的实现，以及系统调用的实现（不需要编码）
 
 **请在实验报告中简要说明你对 fork/exec/wait/exit函数的分析。并回答如下问题：**
@@ -240,4 +244,101 @@
 **这是一个big challenge.**
 
 
+
+#### 实现源码
+
+##### 1.启用共享
+
+```c
+int dup_mmap(struct mm_struct *to, struct mm_struct *from) {
+    bool share = 1;
+
+    return 0;
+}
+```
+
+将dup_mmap中的share变量的值改为1，启用共享。
+
+##### 2.映射共享页面
+
+```c
+int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
+               bool share) {
+    if (*ptep & PTE_V) { 
+        if ((nptep = get_pte(to, start, 1)) == NULL) {
+            return -E_NO_MEM;
+        }
+        uint32_t perm = (*ptep & PTE_USER);
+        // get page from ptep
+        struct Page *page = pte2page(*ptep);
+        // alloc a page for process B
+        struct Page *npage = alloc_page();
+        assert(page != NULL);
+        assert(npage != NULL);
+        int ret = 0;
+        if (share) {
+            page_insert(from, page, start, perm & (~PTE_W));
+            ret = page_insert(to, page, start, perm & (~PTE_W));
+        } else {
+            struct Page *npage=alloc_page();
+            assert(npage!= NULL);
+            uintptr_t src_kvaddr = page2kva(page);
+            uintptr_t dst_kvaddr = page2kva(npage);
+            memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+            ret = page_insert(to, npage, start, perm);
+        }
+        assert(ret == 0);
+    }
+}
+```
+
+在 `pmm.c` 文件中的 `copy_range` 函数里，如果 `share` 参数为 1（即表示需要共享内存），那么需要将子进程的页面映射到父进程的页面上。也就是说，父子进程共享同一块内存区域。
+
+但是，值得注意的是，两个进程共享同一页面后，无论哪个进程修改了该页面，都会影响到另一个进程的页面内容。因此，为了避免其中一个进程的修改影响到另一个进程，必须将这块共享页面在父进程和子进程中都设置为只读（即禁止写操作）。这样可以确保共享的内存区域不会被意外修改。
+
+##### 3.尝试修改时发生拷贝
+
+```c
+int do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
+    if (*ptep == 0) { // if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+            cprintf("pgdir_alloc_page in do_pgfault failed\n");
+            goto failed;
+        }
+    } else if((*ptep & PTE_V) && (error_code & 3 == 3)) {
+        struct Page *page = pte2page(*ptep);
+        struct Page *npage = pgdir_alloc_page(mm->pgdir, addr, perm);
+        uintptr_t src_kvaddr = page2kva(page);
+        uintptr_t dst_kvaddr = page2kva(npage);
+        memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+    }
+}
+```
+
+当程序尝试修改只读内存页面时，会触发页面错误（Page Fault）中断。在这种情况下，错误代码的最低两位会是 `P=1` 和 `W/R=1`，表示该页面是有效的且试图进行写操作。当错误代码的最低两位都为 `1` 时，表明进程试图访问一个共享的页面。此时，内核需要执行以下操作：重新分配一个新页面，复制原页面的内容，并建立新的映射关系，以确保进程可以继续运行并且不会影响其他共享该页面的进程。
+
+#### 转换时序图
+
+<img src="C:\Users\Lenovo\Desktop\cow时序图.png" alt="Local Image" style="zoom:43%;" />
+
+在初始状态下，进程拥有独立的内存空间，且没有启用共享或写时拷贝机制。当调用 `dup_mmap()` 时，系统会将内存状态转换为共享状态，通常发生在执行 `fork` 操作时。在这个过程中，`share` 变量被设置为 1，表示父进程和子进程之间共享了相同的物理页面。这些共享页面被标记为只读，以避免不小心修改它们。
+
+在共享状态下，父子进程指向相同的物理页面，而这些页面对两者都是只读的。如果父进程或子进程尝试写入这些共享页面，会触发页面错误（由于页面是只读的）。在此情况下，错误代码的最低两位为 1，表示尝试对只读页面进行写入。内核在 `do_pgfault()` 中会处理这种情况，为写入的进程分配一个新的页面，并将原页面的内容拷贝到新页面上。接着，更新页面表，将写入操作的进程的页面映射指向新分配的页面。
+
+通过写时拷贝机制，原页面仍然与另一个进程共享，而当前进程则得到一个可写的独立副本。这样，进程就从共享状态返回到未共享状态，拥有了自己的独立且可写的内存空间。
+
+#### 运行结果
+
+![Local Image](C:\Users\Lenovo\Desktop\result.png)
+
 **2. 说明该用户程序是何时被预先加载到内存中的？与我们常用操作系统的加载有何区别，原因是什么？**
+
+在本次实验中，用户程序在编译时已被链接到内核中，并预先定义了起始位置和大小。然后，通过 `user_main()` 函数中的 `KERNEL_EXECVE` 宏调用，进而调用 `kernel_execve()` 函数，该函数再调用 `load_icode()` 将用户程序加载到内存中。这实现了通过内核进程直接将整个用户程序加载到内存的功能。
+
+在现代操作系统中，程序通常是当用户请求执行时，操作系统将程序从磁盘加载到内存中的。这一过程通常涉及以下几个步骤：
+
+1. **程序加载**：操作系统根据用户的请求，从磁盘读取程序文件，并将其加载到内存中。这包括读取程序的指令、数据段、堆栈等内容。
+2.   **内存分配**：操作系统为程序分配内存空间，并将其映射到适当的内存区域。
+3.   **执行**：程序加载到内存后，CPU开始执行程序中的指令。
+
+原因是，ucore 操作系统没有实现硬盘和文件系统，因此为了简化实现和便于教学，决定将用户程序直接编译到内核中，避免了对外部存储和文件系统的依赖。

@@ -8103,10 +8103,10 @@ ffffffffc0204224:	e2afd0ef          	jal	ra,ffffffffc020184e <kmalloc>
 ffffffffc0204228:	842a                	mv	s0,a0
     if (proc != NULL) {
 ffffffffc020422a:	c521                	beqz	a0,ffffffffc0204272 <alloc_proc+0x58>
-     *       uintptr_t cr3;                              // CR3 register: the base addr of Page Directroy Table(PDT)
-     *       uint32_t flags;                             // Process flag
-     *       char name[PROC_NAME_LEN + 1];               // Process name
+     *      PROC_RUNNABLE：进程准备好执行，可以被调度。
+     *      PROC_ZOMBIE：进程即将退出，已经结束执行。
      */
+
      // 初始化进程结构体的各个字段
         proc->state = PROC_UNINIT;            // 初始状态为未初始化
 ffffffffc020422c:	57fd                	li	a5,-1
@@ -8135,12 +8135,12 @@ ffffffffc020424c:	03050513          	addi	a0,a0,48
 ffffffffc0204250:	40d000ef          	jal	ra,ffffffffc0204e5c <memset>
 
         proc->tf = NULL;                      // 陷阱帧初始化为 NULL
-        proc->cr3 = boot_cr3;                        // CR3 寄存器值初始化
+        proc->cr3 = boot_cr3;                 // CR3 寄存器值初始化
 ffffffffc0204254:	00011797          	auipc	a5,0x11
 ffffffffc0204258:	3047b783          	ld	a5,772(a5) # ffffffffc0215558 <boot_cr3>
         proc->tf = NULL;                      // 陷阱帧初始化为 NULL
 ffffffffc020425c:	0a043023          	sd	zero,160(s0)
-        proc->cr3 = boot_cr3;                        // CR3 寄存器值初始化
+        proc->cr3 = boot_cr3;                 // CR3 寄存器值初始化
 ffffffffc0204260:	f45c                	sd	a5,168(s0)
         proc->flags = 0;                      // 进程标志初始化为 0
 ffffffffc0204262:	0a042823          	sw	zero,176(s0)
@@ -8174,10 +8174,10 @@ ffffffffc0204284:	73c8                	ld	a0,160(a5)
 ffffffffc0204286:	8e7fc06f          	j	ffffffffc0200b6c <forkrets>
 
 ffffffffc020428a <init_main>:
-    panic("process exit!!.\n");
 }
 
 // init_main - the second kernel thread used to create user_main kernel threads
+// 初始化用户进程的第二个内核线程
 static int
 init_main(void *arg) {
 ffffffffc020428a:	7179                	addi	sp,sp,-48
@@ -8410,7 +8410,7 @@ ffffffffc0204464:	00032783          	lw	a5,0(t1)
 ffffffffc0204468:	00011417          	auipc	s0,0x11
 ffffffffc020446c:	0c040413          	addi	s0,s0,192 # ffffffffc0215528 <proc_list>
 ffffffffc0204470:	06f55c63          	bge	a0,a5,ffffffffc02044e8 <do_fork+0x17e>
-    proc->pid = get_pid();//获取当前进程PID
+        proc->pid = get_pid();//获取当前进程PID
 ffffffffc0204474:	00a9a223          	sw	a0,4(s3)
     list_add(hash_list + pid_hashfn(proc->pid), &(proc->hash_link));
 ffffffffc0204478:	45a9                	li	a1,10
@@ -8425,20 +8425,20 @@ ffffffffc0204490:	953e                	add	a0,a0,a5
 ffffffffc0204492:	6510                	ld	a2,8(a0)
 ffffffffc0204494:	0d898793          	addi	a5,s3,216
 ffffffffc0204498:	6414                	ld	a3,8(s0)
-    nr_process++;
+        nr_process++;
 ffffffffc020449a:	4098                	lw	a4,0(s1)
     prev->next = next->prev = elm;
 ffffffffc020449c:	e21c                	sd	a5,0(a2)
 ffffffffc020449e:	e51c                	sd	a5,8(a0)
     elm->next = next;
 ffffffffc02044a0:	0ec9b023          	sd	a2,224(s3)
-    list_add(&proc_list,&(proc->list_link));  // 添加进程到进程列表
+        list_add(&proc_list,&(proc->list_link));  // 添加进程到进程列表
 ffffffffc02044a4:	0c898793          	addi	a5,s3,200
     elm->prev = prev;
 ffffffffc02044a8:	0ca9bc23          	sd	a0,216(s3)
     prev->next = next->prev = elm;
 ffffffffc02044ac:	e29c                	sd	a5,0(a3)
-    nr_process++;
+        nr_process++;
 ffffffffc02044ae:	2705                	addiw	a4,a4,1
 ffffffffc02044b0:	e41c                	sd	a5,8(s0)
     elm->next = next;
@@ -8492,10 +8492,10 @@ ffffffffc0204516:	4885                	li	a7,1
 ffffffffc0204518:	679c                	ld	a5,8(a5)
         while ((le = list_next(le)) != list) {
 ffffffffc020451a:	00878d63          	beq	a5,s0,ffffffffc0204534 <do_fork+0x1ca>
-            if (proc->pid == last_pid) {
+            if (proc->pid == last_pid) 
 ffffffffc020451e:	f3c7a703          	lw	a4,-196(a5) # 1f3c <kern_entry-0xffffffffc01fe0c4>
 ffffffffc0204522:	fed715e3          	bne	a4,a3,ffffffffc020450c <do_fork+0x1a2>
-                if (++ last_pid >= next_safe) {
+                if (++ last_pid >= next_safe) 
 ffffffffc0204526:	2685                	addiw	a3,a3,1
 ffffffffc0204528:	04c6d763          	bge	a3,a2,ffffffffc0204576 <do_fork+0x20c>
 ffffffffc020452c:	679c                	ld	a5,8(a5)
@@ -8532,7 +8532,7 @@ ffffffffc020456e:	bdd1                	j	ffffffffc0204442 <do_fork+0xd8>
         intr_enable();
 ffffffffc0204570:	84cfc0ef          	jal	ra,ffffffffc02005bc <intr_enable>
 ffffffffc0204574:	b7b1                	j	ffffffffc02044c0 <do_fork+0x156>
-                    if (last_pid >= MAX_PID) {
+                    if (last_pid >= MAX_PID) 
 ffffffffc0204576:	01d6c363          	blt	a3,t4,ffffffffc020457c <do_fork+0x212>
                         last_pid = 1;
 ffffffffc020457a:	4685                	li	a3,1
@@ -8551,7 +8551,7 @@ ffffffffc020458c:	00d82023          	sw	a3,0(a6)
     return last_pid;
 ffffffffc0204590:	8536                	mv	a0,a3
 ffffffffc0204592:	b5cd                	j	ffffffffc0204474 <do_fork+0x10a>
-    int ret = -E_NO_FREE_PROC;
+    int ret = -E_NO_FREE_PROC;  //初始化错误码，表示没有可用进程
 ffffffffc0204594:	556d                	li	a0,-5
 ffffffffc0204596:	bf15                	j	ffffffffc02044ca <do_fork+0x160>
     return last_pid;
@@ -8568,7 +8568,7 @@ ffffffffc02045b6:	00002697          	auipc	a3,0x2
 ffffffffc02045ba:	63a68693          	addi	a3,a3,1594 # ffffffffc0206bf0 <default_pmm_manager+0xff0>
 ffffffffc02045be:	00001617          	auipc	a2,0x1
 ffffffffc02045c2:	29260613          	addi	a2,a2,658 # ffffffffc0205850 <commands+0x738>
-ffffffffc02045c6:	11200593          	li	a1,274
+ffffffffc02045c6:	12900593          	li	a1,297
 ffffffffc02045ca:	00002517          	auipc	a0,0x2
 ffffffffc02045ce:	63e50513          	addi	a0,a0,1598 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 ffffffffc02045d2:	e75fb0ef          	jal	ra,ffffffffc0200446 <__panic>
@@ -8625,7 +8625,7 @@ ffffffffc0204626:	1141                	addi	sp,sp,-16
     panic("process exit!!.\n");
 ffffffffc0204628:	00002617          	auipc	a2,0x2
 ffffffffc020462c:	5f860613          	addi	a2,a2,1528 # ffffffffc0206c20 <default_pmm_manager+0x1020>
-ffffffffc0204630:	17900593          	li	a1,377
+ffffffffc0204630:	19a00593          	li	a1,410
 ffffffffc0204634:	00002517          	auipc	a0,0x2
 ffffffffc0204638:	5d450513          	addi	a0,a0,1492 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 do_exit(int error_code) {
@@ -8637,6 +8637,7 @@ ffffffffc0204642 <proc_init>:
 
 // proc_init - set up the first kernel thread idleproc "idle" by itself and 
 //           - create the second kernel thread init_main
+//设置idle和init两个内核线程
 void
 proc_init(void) {
 ffffffffc0204642:	7179                	addi	sp,sp,-48
@@ -8666,6 +8667,7 @@ ffffffffc0204672:	fef71de3          	bne	a4,a5,ffffffffc020466c <proc_init+0x2a>
         list_init(hash_list + i);
     }
 
+    // 分配idle
     if ((idleproc = alloc_proc()) == NULL) {
 ffffffffc0204676:	ba5ff0ef          	jal	ra,ffffffffc020421a <alloc_proc>
 ffffffffc020467a:	00011917          	auipc	s2,0x11
@@ -8711,16 +8713,17 @@ ffffffffc02046c8:	85a2                	mv	a1,s0
 ffffffffc02046ca:	0b450513          	addi	a0,a0,180
 ffffffffc02046ce:	7b8000ef          	jal	ra,ffffffffc0204e86 <memcmp>
 
+    // 验证idle进程结构初始化是否正确
     if(idleproc->cr3 == boot_cr3 && idleproc->tf == NULL && !context_init_flag
 ffffffffc02046d2:	00093783          	ld	a5,0(s2)
 ffffffffc02046d6:	00011717          	auipc	a4,0x11
 ffffffffc02046da:	e8273703          	ld	a4,-382(a4) # ffffffffc0215558 <boot_cr3>
 ffffffffc02046de:	77d4                	ld	a3,168(a5)
 ffffffffc02046e0:	0ee68463          	beq	a3,a4,ffffffffc02047c8 <proc_init+0x186>
-        cprintf("alloc_proc() correct!\n");
 
     }
     
+    // 初始化idle
     idleproc->pid = 0;
     idleproc->state = PROC_RUNNABLE;
 ffffffffc02046e4:	4709                	li	a4,2
@@ -8755,6 +8758,7 @@ ffffffffc020471c:	431c                	lw	a5,0(a4)
     current = idleproc;
 ffffffffc020471e:	00093683          	ld	a3,0(s2)
 
+    // 创建init线程
     int pid = kernel_thread(init_main, "Hello world!!", 0);
 ffffffffc0204722:	4601                	li	a2,0
     nr_process ++;
@@ -8880,14 +8884,14 @@ ffffffffc020481e:	bfb9                	j	ffffffffc020477c <proc_init+0x13a>
         panic("cannot alloc idleproc.\n");
 ffffffffc0204820:	00002617          	auipc	a2,0x2
 ffffffffc0204824:	41860613          	addi	a2,a2,1048 # ffffffffc0206c38 <default_pmm_manager+0x1038>
-ffffffffc0204828:	19100593          	li	a1,401
+ffffffffc0204828:	1b500593          	li	a1,437
 ffffffffc020482c:	00002517          	auipc	a0,0x2
 ffffffffc0204830:	3dc50513          	addi	a0,a0,988 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 ffffffffc0204834:	c13fb0ef          	jal	ra,ffffffffc0200446 <__panic>
         panic("create init_main failed.\n");
 ffffffffc0204838:	00002617          	auipc	a2,0x2
 ffffffffc020483c:	44860613          	addi	a2,a2,1096 # ffffffffc0206c80 <default_pmm_manager+0x1080>
-ffffffffc0204840:	1b100593          	li	a1,433
+ffffffffc0204840:	1d800593          	li	a1,472
 ffffffffc0204844:	00002517          	auipc	a0,0x2
 ffffffffc0204848:	3c450513          	addi	a0,a0,964 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 ffffffffc020484c:	bfbfb0ef          	jal	ra,ffffffffc0200446 <__panic>
@@ -8896,7 +8900,7 @@ ffffffffc0204850:	00002697          	auipc	a3,0x2
 ffffffffc0204854:	48068693          	addi	a3,a3,1152 # ffffffffc0206cd0 <default_pmm_manager+0x10d0>
 ffffffffc0204858:	00001617          	auipc	a2,0x1
 ffffffffc020485c:	ff860613          	addi	a2,a2,-8 # ffffffffc0205850 <commands+0x738>
-ffffffffc0204860:	1b800593          	li	a1,440
+ffffffffc0204860:	1df00593          	li	a1,479
 ffffffffc0204864:	00002517          	auipc	a0,0x2
 ffffffffc0204868:	3a450513          	addi	a0,a0,932 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 ffffffffc020486c:	bdbfb0ef          	jal	ra,ffffffffc0200446 <__panic>
@@ -8905,7 +8909,7 @@ ffffffffc0204870:	00002697          	auipc	a3,0x2
 ffffffffc0204874:	43868693          	addi	a3,a3,1080 # ffffffffc0206ca8 <default_pmm_manager+0x10a8>
 ffffffffc0204878:	00001617          	auipc	a2,0x1
 ffffffffc020487c:	fd860613          	addi	a2,a2,-40 # ffffffffc0205850 <commands+0x738>
-ffffffffc0204880:	1b700593          	li	a1,439
+ffffffffc0204880:	1de00593          	li	a1,478
 ffffffffc0204884:	00002517          	auipc	a0,0x2
 ffffffffc0204888:	38450513          	addi	a0,a0,900 # ffffffffc0206c08 <default_pmm_manager+0x1008>
 ffffffffc020488c:	bbbfb0ef          	jal	ra,ffffffffc0200446 <__panic>

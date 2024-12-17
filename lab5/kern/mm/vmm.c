@@ -201,7 +201,7 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
 
         insert_vma_struct(to, nvma);
 
-        bool share = 0;
+        bool share = 1;
         if (copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share) != 0) {
             return -E_NO_MEM;
         }
@@ -434,7 +434,13 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
             cprintf("pgdir_alloc_page in do_pgfault failed\n");
             goto failed;
         }
-    } else {
+    } else if((*ptep & PTE_V) && (error_code & 3 == 3)){
+        struct Page *page = pte2page(*ptep);
+        struct Page *npage = pgdir_alloc_page(mm->pgdir, addr, perm);
+        uintptr_t src_kvaddr = page2kva(page);
+        uintptr_t dst_kvaddr = page2kva(npage);
+        memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+    }else {
         /*LAB3 EXERCISE 3: 2211489
         * 请你根据以下信息提示，补充函数
         * 现在我们认为pte是一个交换条目，那我们应该从磁盘加载数据并放到带有phy addr的页面，
@@ -523,4 +529,6 @@ user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
     // 调用KERN_ACCESS，判断是否可以访问内核空间
     return KERN_ACCESS(addr, addr + len);
 }
+
+
 

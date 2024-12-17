@@ -338,7 +338,7 @@ void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
 
 /* copy_range - copy content of memory (start, end) of one process A to another
  * process B
- * ½ø³ÌAµÄÄÚ´æ¸´ÖÆµ½½ø³ÌB
+ * ï¿½ï¿½ï¿½ï¿½Aï¿½ï¿½ï¿½Ú´æ¸´ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½B
  * @to:    the addr of process B's Page Directory
  * @from:  the addr of process A's Page Directory
  * @share: flags to indicate to dup OR share. We just use dup method, so it
@@ -351,10 +351,10 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
     assert(start % PGSIZE == 0 && end % PGSIZE == 0);
     assert(USER_ACCESS(start, end));
 
-    // copy content by page unit.   °´Ò³¸´ÖÆ
+    // copy content by page unit.   ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½
     do {
         // call get_pte to find process A's pte according to the addr start
-        // Ê¹ÓÃ get_pte »ñÈ¡½ø³Ì A µÄÒ³±íÏî£¨PTE£©
+        // Ê¹ï¿½ï¿½ get_pte ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ A ï¿½ï¿½Ò³ï¿½ï¿½ï¿½î£¨PTEï¿½ï¿½
         pte_t *ptep = get_pte(from, start, 0), *nptep;
         if (ptep == NULL) {
             start = ROUNDDOWN(start + PTSIZE, PTSIZE);
@@ -363,7 +363,7 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
 
         // call get_pte to find process B's pte according to the addr start. If
         // pte is NULL, just alloc a PT
-        // Ê¹ÓÃ get_pte »ñÈ¡½ø³Ì B µÄÒ³±íÏî£¨PTE£©£¬Èç¹ûÃ»ÓÐ¾Í·ÖÅä
+        // Ê¹ï¿½ï¿½ get_pte ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ B ï¿½ï¿½Ò³ï¿½ï¿½ï¿½î£¨PTEï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½Ð¾Í·ï¿½ï¿½ï¿½
         if (*ptep & PTE_V) {
             if ((nptep = get_pte(to, start, 1)) == NULL) {
                 return -E_NO_MEM;
@@ -379,34 +379,39 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             /* LAB5:EXERCISE2 2211489
              * replicate content of page to npage, build the map of phy addr of
              * nage with the linear addr start
-             * ½«Ò³ÃæÄÚÈÝ¸´ÖÆµ½ÐÂÒ³Ãænpage£¬²¢½¨Á¢ÎïÀíµØÖ·ÓëÏßÐÔµØÖ·startÖ®¼äµÄÓ³Éä¡£
+             * ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½Ý¸ï¿½ï¿½Æµï¿½ï¿½ï¿½Ò³ï¿½ï¿½npageï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ôµï¿½Ö·startÖ®ï¿½ï¿½ï¿½Ó³ï¿½ä¡£
              *
              * Some Useful MACROs and DEFINEs, you can use them in below
              * implementation.
              * MACROs or Functions:
              *    page2kva(struct Page *page): return the kernel vritual addr of
              * memory which page managed (SEE pmm.h)
-             *    ·µ»ØÓÉpage¹ÜÀíµÄÄÚ´æµÄÄÚºËÐéÄâµØÖ· (²Î¼û pmm.h)
+             *    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pageï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½Úºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö· (ï¿½Î¼ï¿½ pmm.h)
              *    page_insert: build the map of phy addr of an Page with the
              * linear addr la
-             *    ½¨Á¢Ò»¸öPageµÄÎïÀíµØÖ·ÓëÏßÐÔµØÖ·laÖ®¼äµÄÓ³Éä
+             *    ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Pageï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ôµï¿½Ö·laÖ®ï¿½ï¿½ï¿½Ó³ï¿½ï¿½
              *    memcpy: typical memory copy function
              *
              * (1) find src_kvaddr: the kernel virtual address of page
              * (2) find dst_kvaddr: the kernel virtual address of npage
              * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
              * (4) build the map of phy addr of  nage with the linear addr start
-             * (1) ÕÒµ½src_kvaddr£ºÒ³ÃæpageµÄÄÚºËÐéÄâµØÖ·
-             * (2) ÕÒµ½dst_kvaddr£ºÐÂÒ³ÃænpageµÄÄÚºËÐéÄâµØÖ·
-             * (3) ´Ósrc_kvaddrµ½dst_kvaddr½øÐÐÄÚ´æ¸´ÖÆ£¬´óÐ¡ÎªPGSIZE£¨Ò³Ãæ´óÐ¡£©
-             * (4) ½¨Á¢ÐÂÒ³ÃænpageµÄÎïÀíµØÖ·ÓëÏßÐÔµØÖ·startÖ®¼äµÄÓ³Éä
+             * (1) ï¿½Òµï¿½src_kvaddrï¿½ï¿½Ò³ï¿½ï¿½pageï¿½ï¿½ï¿½Úºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·
+             * (2) ï¿½Òµï¿½dst_kvaddrï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½npageï¿½ï¿½ï¿½Úºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·
+             * (3) ï¿½ï¿½src_kvaddrï¿½ï¿½dst_kvaddrï¿½ï¿½ï¿½ï¿½ï¿½Ú´æ¸´ï¿½Æ£ï¿½ï¿½ï¿½Ð¡ÎªPGSIZEï¿½ï¿½Ò³ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
+             * (4) ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½npageï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ôµï¿½Ö·startÖ®ï¿½ï¿½ï¿½Ó³ï¿½ï¿½
              */
-
-            void* src_kvaddr = page2kva(page);
-            void* dst_kvaddr = page2kva(npage);
-            memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
-            ret = page_insert(to, npage, start, perm);
-
+             if (share) {
+                page_insert(from, page, start, perm & (~PTE_W));
+                ret = page_insert(to, page, start, perm & (~PTE_W));
+            } else {
+                struct Page *npage=alloc_page();
+                assert(npage!= NULL);
+                uintptr_t src_kvaddr = page2kva(page);
+                uintptr_t dst_kvaddr = page2kva(npage);
+                memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+                ret = page_insert(to, npage, start, perm);
+            }
             assert(ret == 0);
         }
         start += PGSIZE;
