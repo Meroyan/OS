@@ -319,7 +319,7 @@ int do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
 
 #### 转换时序图
 
-<img src="C:\Users\Lenovo\Desktop\cow时序图.png" alt="Local Image" style="zoom:43%;" />
+<img src="cow时序图.png" alt="Local Image" style="zoom:43%;" />
 
 在初始状态下，进程拥有独立的内存空间，且没有启用共享或写时拷贝机制。当调用 `dup_mmap()` 时，系统会将内存状态转换为共享状态，通常发生在执行 `fork` 操作时。在这个过程中，`share` 变量被设置为 1，表示父进程和子进程之间共享了相同的物理页面。这些共享页面被标记为只读，以避免不小心修改它们。
 
@@ -329,7 +329,7 @@ int do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
 
 #### 运行结果
 
-![Local Image](C:\Users\Lenovo\Desktop\result.png)
+![Local Image](result.png)
 
 **2. 说明该用户程序是何时被预先加载到内存中的？与我们常用操作系统的加载有何区别，原因是什么？**
 
